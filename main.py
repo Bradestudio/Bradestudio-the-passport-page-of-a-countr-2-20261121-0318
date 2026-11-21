@@ -23,10 +23,24 @@ The spread (1024x640 PNG, 228,427 bytes):
 import hashlib
 import os
 import shutil
+import struct
 import sys
 from pathlib import Path
 
 ASSET = Path(__file__).resolve().parent / "entry.png"
+MAX_BYTES = 1_048_576
+MAX_DIM = 1024
+
+
+def png_dimensions(data):
+    """Read width/height from the PNG IHDR chunk (stdlib only)."""
+    if data[:8] != b"\x89PNG\r\n\x1a\n":
+        raise SystemExit("entry.png is not a PNG file")
+    length, ctype = struct.unpack(">I4s", data[8:16])
+    if ctype != b"IHDR" or length != 13:
+        raise SystemExit("entry.png has no valid IHDR chunk")
+    width, height = struct.unpack(">II", data[16:24])
+    return width, height
 
 
 def main():
@@ -40,7 +54,16 @@ def main():
     target = outdir / "entry.png"
     shutil.copyfile(ASSET, target)
     data = target.read_bytes()
-    print(f"wrote {target} ({len(data)} bytes, "
+    if len(data) > MAX_BYTES:
+        raise SystemExit(f"entry.png is {len(data)} bytes, gate needs "
+                         f"at most {MAX_BYTES}")
+    width, height = png_dimensions(data)
+    if width > MAX_DIM or height > MAX_DIM:
+        raise SystemExit(f"entry.png is {width}x{height}, gate needs "
+                         f"at most {MAX_DIM}x{MAX_DIM}")
+    if data != ASSET.read_bytes():
+        raise SystemExit("copied entry.png differs from the shipped asset")
+    print(f"wrote {target} ({len(data)} bytes, {width}x{height}, "
           f"sha256 {hashlib.sha256(data).hexdigest()})")
 
 
